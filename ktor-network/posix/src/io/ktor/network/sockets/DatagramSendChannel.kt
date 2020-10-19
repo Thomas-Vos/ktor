@@ -7,22 +7,23 @@ package io.ktor.network.sockets
 import io.ktor.network.selector.*
 import io.ktor.network.util.*
 import io.ktor.utils.io.core.*
+import io.ktor.utils.io.errors.*
 import io.ktor.utils.io.pool.*
 import kotlinx.atomicfu.*
+import kotlinx.cinterop.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
 import kotlinx.coroutines.selects.*
 import kotlinx.coroutines.sync.*
-import java.net.*
-import java.nio.*
-import java.nio.channels.*
-import kotlin.coroutines.*
+import platform.posix.*
 
+@SharedImmutable
 private val CLOSED: (Throwable?) -> Unit = {}
+@SharedImmutable
 private val CLOSED_INVOKED: (Throwable?) -> Unit = {}
 
 internal class DatagramSendChannel(
-    val channel: DatagramChannel,
+    val descriptor: Int,
     val socket: DatagramSocketImpl
 ) : SendChannel<Datagram> {
     private val onCloseHandler = atomic<((Throwable?) -> Unit)?>(null)
@@ -63,7 +64,32 @@ internal class DatagramSendChannel(
         try {
             DefaultDatagramByteBufferPool.useInstance { buffer ->
                 element.packet.copy().readAvailable(buffer)
-                result = channel.send(buffer, element.address) == 0
+
+                val bytes = element.packet.copy().readBytes()
+                var bytesWritten: Int? = null
+                bytes.usePinned { pinned ->
+                    element.address.address.nativeAddress { address, addressSize ->
+                        bytesWritten = sendto(
+                            descriptor,
+                            pinned.addressOf(0),
+                            bytes.size.convert(),
+                            0,
+                            address,
+                            addressSize
+                        ).toInt()
+                    }
+                }
+                when (bytesWritten ?: error("bytesWritten cannot be null")) {
+                    0 -> throw IOException("Failed writing to closed socket")
+                    -1 -> {
+                        if (errno == EAGAIN) {
+                            result = false
+                        } else {
+                            throw PosixException.forErrno()
+                        }
+                    }
+                    else -> result = true
+                }
             }
         } finally {
             lock.unlock()
@@ -78,30 +104,37 @@ internal class DatagramSendChannel(
 
     override suspend fun send(element: Datagram) {
         lock.withLock {
-            withContext(Dispatchers.IO) {
-                DefaultDatagramByteBufferPool.useInstance { buffer ->
-                    element.writeMessageTo(buffer)
-
-                    val rc = channel.send(buffer, element.address)
-                    if (rc != 0) {
-                        socket.interestOp(SelectInterest.WRITE, false)
-                        return@useInstance
-                    }
-
-                    sendSuspend(buffer, element.address)
-                }
-            }
+            // TODO: use IO dispatcher just like JVM implementation
+            sendImpl(element)
         }
     }
 
-    private suspend fun sendSuspend(buffer: ByteBuffer, address: SocketAddress) {
-        while (true) {
-            socket.interestOp(SelectInterest.WRITE, true)
-            socket.selector.select(socket, SelectInterest.WRITE)
-
-            if (channel.send(buffer, address) != 0) {
-                socket.interestOp(SelectInterest.WRITE, false)
-                break
+    private tailrec suspend fun sendImpl(
+        datagram: Datagram,
+        bytes: ByteArray = datagram.packet.readBytes()
+    ) {
+        var bytesWritten: Int? = null
+        bytes.usePinned { pinned ->
+            datagram.address.address.nativeAddress { address, addressSize ->
+                bytesWritten = sendto(
+                    descriptor,
+                    pinned.addressOf(0),
+                    bytes.size.convert(),
+                    0,
+                    address,
+                    addressSize
+                ).toInt()
+            }
+        }
+        when (bytesWritten ?: error("bytesWritten cannot be null")) {
+            0 -> throw IOException("Failed writing to closed socket")
+            -1 -> {
+                if (errno == EAGAIN) {
+                    socket.selector.select(socket.selectable, SelectInterest.WRITE)
+                    sendImpl(datagram, bytes)
+                } else {
+                    throw PosixException.forErrno()
+                }
             }
         }
     }
@@ -148,9 +181,4 @@ private fun failInvokeOnClose(handler: ((cause: Throwable?) -> Unit)?) {
     }
 
     throw IllegalStateException(message)
-}
-
-private fun Datagram.writeMessageTo(buffer: ByteBuffer) {
-    packet.readAvailable(buffer)
-    buffer.flip()
 }

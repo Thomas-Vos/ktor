@@ -21,6 +21,11 @@ kotlin {
                 api(project(":ktor-utils"))
             }
         }
+        commonTest {
+            dependencies {
+                api(project(":ktor-test-dispatcher"))
+            }
+        }
 
         if (!ideaActive && findByName("posixMain") != null) {
             val networkInterop by creating
