@@ -6,39 +6,25 @@ package io.ktor.network.sockets.tests
 
 import io.ktor.network.selector.*
 import io.ktor.network.sockets.*
+import io.ktor.test.dispatcher.*
 import io.ktor.util.*
 import io.ktor.util.network.*
 import io.ktor.utils.io.core.*
+import kotlinx.atomicfu.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.*
-import kotlinx.coroutines.debug.junit4.*
-import org.junit.*
-import java.net.*
-import kotlin.coroutines.*
-import kotlin.io.use
 import kotlin.test.*
 import kotlin.test.Test
 
-class UDPSocketTest : CoroutineScope {
-    private val testJob = Job()
-    private val selector = ActorSelectorManager(Dispatchers.Default + testJob)
+// TODO: some tests are logging the following exception (tests still green). Not sure why this is happening, this was not the case before rebasing.
+//  io.ktor.utils.io.errors.PosixException.BadFileDescriptorException: EBADF (9): Bad file descriptor
+class UDPSocketTest {
 
-    @get:Rule
-    val timeout = CoroutinesTimeout(1000, cancelOnTimeout = true)
-
-    override val coroutineContext: CoroutineContext
-        get() = testJob
-
-    @AfterTest
-    fun tearDown() {
-        testJob.cancel()
-        selector.close()
-    }
+    private val done = atomic(0)
 
     @Test
-    fun testBroadcastFails(): Unit = runBlocking {
+    fun testBroadcastFails(): Unit = testUdpSockets(1000) { selector ->
         if (OS_NAME == "win") {
-            return@runBlocking
+            return@testUdpSockets
         }
 
         retryIgnoringBindException {
@@ -57,8 +43,8 @@ class UDPSocketTest : CoroutineScope {
 
                     it.send(datagram)
                 }
-            } catch (cause: SocketException) {
-                if (!cause.message.equals("Permission denied", ignoreCase = true)) {
+            } catch (cause: Exception /* TODO: SocketException */) {
+                if (cause.message?.contains("Permission denied", ignoreCase = true) != true) {
                     throw cause
                 }
 
@@ -71,8 +57,10 @@ class UDPSocketTest : CoroutineScope {
         }
     }
 
+    // TODO: Test is failing with this exception:
+    //  io.ktor.utils.io.errors.PosixException.PosixErrnoException: POSIX error 49: Can't assign requested address (49)
     @Test
-    fun testBroadcastSuccessful() = runBlocking {
+    fun testBroadcastSuccessful() = testUdpSockets(15000) { selector ->
         retryIgnoringBindException {
             val serverSocketCompletable = CompletableDeferred<BoundDatagramSocket>()
             val server = launch {
@@ -113,7 +101,7 @@ class UDPSocketTest : CoroutineScope {
     }
 
     @Test
-    fun testClose(): Unit = runBlocking {
+    fun testClose(): Unit = testUdpSockets(1000) { selector ->
         retryIgnoringBindException {
             val socket = aSocket(selector)
                 .udp()
@@ -127,13 +115,12 @@ class UDPSocketTest : CoroutineScope {
     }
 
     @Test
-    fun testInvokeOnClose() = runBlocking {
+    fun testInvokeOnClose() = testUdpSockets(1000) { selector ->
         retryIgnoringBindException {
             val socket: BoundDatagramSocket = aSocket(selector)
                 .udp()
                 .bind()
 
-            var done = 0
             socket.outgoing.invokeOnClose {
                 done += 1
             }
@@ -149,18 +136,17 @@ class UDPSocketTest : CoroutineScope {
 
             socket.socketContext.join()
             assertTrue(socket.isClosed)
-            assertEquals(1, done)
+            assertEquals(1, done.value)
         }
     }
 
     @Test
-    fun testOutgoingInvokeOnClose() = runBlocking {
+    fun testOutgoingInvokeOnClose() = testUdpSockets(1000) { selector ->
         retryIgnoringBindException {
             val socket: BoundDatagramSocket = aSocket(selector)
                 .udp()
                 .bind()
 
-            var done = 0
             socket.outgoing.invokeOnClose {
                 done += 1
                 assertTrue(it is AssertionError)
@@ -168,27 +154,26 @@ class UDPSocketTest : CoroutineScope {
 
             socket.outgoing.close(AssertionError())
 
-            assertEquals(1, done)
+            assertEquals(1, done.value)
             socket.socketContext.join()
             assertTrue(socket.isClosed)
         }
     }
 
     @Test
-    fun testOutgoingInvokeOnCloseWithSocketClose() = runBlocking {
+    fun testOutgoingInvokeOnCloseWithSocketClose() = testUdpSockets(1000) { selector ->
         retryIgnoringBindException {
             val socket: BoundDatagramSocket = aSocket(selector)
                 .udp()
                 .bind()
 
-            var done = 0
             socket.outgoing.invokeOnClose {
                 done += 1
             }
 
             socket.close()
 
-            assertEquals(1, done)
+            assertEquals(1, done.value)
 
             socket.socketContext.join()
             assertTrue(socket.isClosed)
@@ -196,7 +181,7 @@ class UDPSocketTest : CoroutineScope {
     }
 
     @Test
-    fun testOutgoingInvokeOnClosed() = runBlocking {
+    fun testOutgoingInvokeOnClosed() = testUdpSockets(1000) { selector ->
         retryIgnoringBindException {
             val socket: BoundDatagramSocket = aSocket(selector)
                 .udp()
@@ -204,16 +189,56 @@ class UDPSocketTest : CoroutineScope {
 
             socket.outgoing.close(AssertionError())
 
-            var done = 0
             socket.outgoing.invokeOnClose {
                 done += 1
                 assertTrue(it is AssertionError)
             }
 
-            assertEquals(1, done)
+            assertEquals(1, done.value)
 
             socket.socketContext.join()
             assertTrue(socket.isClosed)
+        }
+    }
+
+    @Test
+    fun testSendReceive(): Unit = testUdpSockets(15000) { selector ->
+        aSocket(selector)
+            .udp()
+            .bind(NetworkAddress("127.0.0.1", 8000)) {
+                reuseAddress = true
+                reusePort = true
+            }
+            .use { socket ->
+                // Send messages to localhost
+                launch {
+                    val address = NetworkAddress("127.0.0.1", 8000)
+                    repeat(10) {
+                        val bytePacket = buildPacket { append("hello") }
+                        val data = Datagram(bytePacket, address)
+                        socket.send(data)
+                    }
+                }
+
+                // Receive messages from localhost
+                repeat(10) {
+                    val incoming = socket.receive()
+                    assertEquals("hello", incoming.packet.readText())
+                }
+            }
+    }
+}
+
+private fun testUdpSockets(
+    timeoutMillis: Long,
+    block: suspend CoroutineScope.(SelectorManager) -> Unit
+) {
+    if (!PlatformUtils.IS_JVM && !PlatformUtils.IS_NATIVE) return
+    testSuspend {
+        withTimeout(timeoutMillis) {
+            SelectorManager().use { selector ->
+                block(selector)
+            }
         }
     }
 }
@@ -223,7 +248,8 @@ internal inline fun retryIgnoringBindException(block: () -> Unit) {
     while (!done) {
         try {
             block()
-        } catch (cause: SocketException) {
+        } catch (cause: Exception /* TODO: SocketException */) {
+            // TODO: fix this for posix if needed
             if (!cause.message.equals("Already bound", ignoreCase = true)) {
                 throw cause
             }
@@ -235,7 +261,7 @@ internal inline fun retryIgnoringBindException(block: () -> Unit) {
 
 private val OS_NAME: String
     get() {
-        val os = System.getProperty("os.name", "unknown").toLowerCase()
+        val os = "unknown" // TODO: System.getProperty("os.name", "unknown").toLowerCase()
         return when {
             os.contains("win") -> "win"
             os.contains("mac") -> "mac"
