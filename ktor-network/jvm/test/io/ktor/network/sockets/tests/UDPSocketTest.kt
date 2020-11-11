@@ -50,4 +50,12 @@ class UDPSocketTest : CoroutineScope {
             }
         }
     }
+
+    @Test
+    fun testClose(): Unit = runBlocking {
+        val socket = aSocket(selector)
+            .udp()
+            .bind()
+        socket.close()
+    }
 }
