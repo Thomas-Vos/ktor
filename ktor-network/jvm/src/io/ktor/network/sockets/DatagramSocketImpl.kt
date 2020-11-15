@@ -10,6 +10,7 @@ import io.ktor.util.network.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
 import io.ktor.utils.io.core.*
+import io.ktor.utils.io.errors.*
 import java.net.*
 import java.nio.*
 import java.nio.channels.*
@@ -57,6 +58,7 @@ internal class DatagramSocketImpl(override val channel: DatagramChannel, selecto
     private suspend fun receiveImpl(): Datagram {
         val buffer = DefaultDatagramByteBufferPool.borrow()
         val address = try {
+            throw IOException("Test receive exception") // TODO: This was just added for testing
             channel.receive(buffer)
         } catch (t: Throwable) {
             DefaultDatagramByteBufferPool.recycle(buffer)
