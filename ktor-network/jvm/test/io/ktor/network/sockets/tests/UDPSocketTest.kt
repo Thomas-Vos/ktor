@@ -61,7 +61,57 @@ class UDPSocketTest : CoroutineScope {
     }
 
     @Test
-    fun testInvokeOnClose() = runBlocking {
+    fun testOutgoingInvokeOnClose() = runBlocking {
+        val socket: BoundDatagramSocket = aSocket(selector)
+            .udp()
+            .bind()
+
+        var done = 0
+        socket.outgoing.invokeOnClose {
+            done += 1
+            assertTrue(it is AssertionError)
+        }
+
+        socket.outgoing.close(AssertionError())
+
+        assertEquals(1, done)
+    }
+
+    @Test
+    fun testOutgoingInvokeOnCloseWithSocketClose() = runBlocking {
+        val socket: BoundDatagramSocket = aSocket(selector)
+            .udp()
+            .bind()
+
+        var done = 0
+        socket.outgoing.invokeOnClose {
+            done += 1
+        }
+
+        socket.close()
+
+        assertEquals(1, done)
+    }
+
+    @Test
+    fun testOutgoingInvokeOnClosed() = runBlocking {
+        val socket: BoundDatagramSocket = aSocket(selector)
+            .udp()
+            .bind()
+
+        socket.outgoing.close(AssertionError())
+
+        var done = 0
+        socket.outgoing.invokeOnClose {
+            done += 1
+            assertTrue(it is AssertionError)
+        }
+
+        assertEquals(1, done)
+    }
+
+    @Test
+    fun testOutgoingMultipleInvokeOnClose() = runBlocking {
         val socket: BoundDatagramSocket = aSocket(selector)
             .udp()
             .bind()
@@ -73,12 +123,12 @@ class UDPSocketTest : CoroutineScope {
 
         assertFailsWith<IllegalStateException> {
             socket.outgoing.invokeOnClose {
-                done += 1
+                done += 2
             }
         }
 
-        socket.close()
-        socket.close()
+        socket.outgoing.close()
+        socket.outgoing.close()
 
         assertEquals(1, done)
     }

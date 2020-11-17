@@ -27,6 +27,7 @@ internal class DatagramSendChannel(
 ) : SendChannel<Datagram> {
     private val onCloseHandler = atomic<((Throwable?) -> Unit)?>(null)
     private val closed = atomic(false)
+    private val closedCause = atomic<Throwable?>(null)
 
     @ExperimentalCoroutinesApi
     override val isClosedForSend: Boolean
@@ -43,13 +44,16 @@ internal class DatagramSendChannel(
             return false
         }
 
-        val handler = onCloseHandler.getAndSet(HANDLER_INVOKED)
-        if (handler != null) {
-            handler(cause)
-        }
-
         if (!socket.isClosed) {
             socket.close()
+        }
+
+        val handler = onCloseHandler.value
+        if (handler !== null && handler !== HANDLER_INVOKED
+            && onCloseHandler.compareAndSet(handler, HANDLER_INVOKED)) {
+            handler(cause)
+        } else {
+            closedCause.value = cause
         }
 
         return true
@@ -111,19 +115,21 @@ internal class DatagramSendChannel(
 
     @ExperimentalCoroutinesApi
     override fun invokeOnClose(handler: (cause: Throwable?) -> Unit) {
-        if (onCloseHandler.compareAndSet(null, handler)) {
-            return
-        }
+        if (!onCloseHandler.compareAndSet(null, handler)) {
+            val value = onCloseHandler.value
 
-        val value = onCloseHandler.value
-
-        val message = if (value === HANDLER_INVOKED) {
-            "Another handler was already registered and successfully invoked"
+            val message = if (value === HANDLER_INVOKED) {
+                "Another handler was already registered and successfully invoked"
+            } else {
+                "Another handler was already registered: $value"
+            }
+            throw IllegalStateException(message)
         } else {
-            "Another handler was already registered: $value"
+            if (closed.value && onCloseHandler.compareAndSet(handler, HANDLER_INVOKED)) {
+                val cause = closedCause.getAndSet(null)
+                handler(cause)
+            }
         }
-
-        throw IllegalStateException(message)
     }
 }
 
