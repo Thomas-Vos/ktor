@@ -43,14 +43,22 @@ internal class DatagramSendChannel(
     override fun offer(element: Datagram): Boolean {
         if (!lock.tryLock()) return false
 
+        var result = false
+
         try {
             DefaultDatagramByteBufferPool.useInstance { buffer ->
-                element.writeMessageTo(buffer)
-                return channel.send(buffer, element.address) != 0
+                element.packet.copy().readAvailable(buffer)
+                result = channel.send(buffer, element.address) == 0
             }
         } finally {
             lock.unlock()
         }
+
+        if (result) {
+            element.packet.release()
+        }
+
+        return result
     }
 
     override suspend fun send(element: Datagram) {
