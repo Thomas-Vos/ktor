@@ -46,8 +46,8 @@ internal class DatagramSocketImpl(
 
     override fun close() {
         receiver.cancel()
-        sender.close()
         super.close()
+        sender.close()
     }
 
     @Suppress("BlockingMethodInNonBlockingContext")
