@@ -11,6 +11,7 @@ import io.ktor.utils.io.core.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.debug.junit4.*
 import org.junit.*
+import java.lang.IllegalStateException
 import java.net.*
 import kotlin.coroutines.*
 import kotlin.io.use
@@ -57,5 +58,28 @@ class UDPSocketTest : CoroutineScope {
             .udp()
             .bind()
         socket.close()
+    }
+
+    @Test
+    fun testInvokeOnClose() = runBlocking {
+        val socket: BoundDatagramSocket = aSocket(selector)
+            .udp()
+            .bind()
+
+        var done = 0
+        socket.outgoing.invokeOnClose {
+            done += 1
+        }
+
+        assertFailsWith<IllegalStateException> {
+            socket.outgoing.invokeOnClose {
+                done += 1
+            }
+        }
+
+        socket.close()
+        socket.close()
+
+        assertEquals(1, done)
     }
 }

@@ -8,18 +8,26 @@ import io.ktor.network.selector.*
 import io.ktor.network.util.*
 import io.ktor.utils.io.core.*
 import io.ktor.utils.io.pool.*
+import kotlinx.atomicfu.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
+import kotlinx.coroutines.internal.*
 import kotlinx.coroutines.selects.*
 import kotlinx.coroutines.sync.*
 import java.net.*
 import java.nio.*
 import java.nio.channels.*
+import kotlin.native.concurrent.*
+
+private val HANDLER_INVOKED: (Throwable?) -> Unit = {}
 
 internal class DatagramSendChannel(
     val channel: DatagramChannel,
     val socket: DatagramSocketImpl
 ) : SendChannel<Datagram> {
+    private val onCloseHandler = atomic<((Throwable?) -> Unit)?>(null)
+    private val closed = atomic(false)
+
     @ExperimentalCoroutinesApi
     override val isClosedForSend: Boolean
         get() = socket.isClosed
@@ -31,11 +39,19 @@ internal class DatagramSendChannel(
     private val lock = Mutex()
 
     override fun close(cause: Throwable?): Boolean {
-        if (socket.isClosed) {
+        if (!closed.compareAndSet(false, true)) {
             return false
         }
 
-        socket.close()
+        val handler = onCloseHandler.getAndSet(HANDLER_INVOKED)
+        if (handler != null) {
+            handler(cause)
+        }
+
+        if (!socket.isClosed) {
+            socket.close()
+        }
+
         return true
     }
 
@@ -95,7 +111,19 @@ internal class DatagramSendChannel(
 
     @ExperimentalCoroutinesApi
     override fun invokeOnClose(handler: (cause: Throwable?) -> Unit) {
-        TODO("[DatagramSendChannel] doesn't support [invokeOnClose] operation.")
+        if (onCloseHandler.compareAndSet(null, handler)) {
+            return
+        }
+
+        val value = onCloseHandler.value
+
+        val message = if (value === HANDLER_INVOKED) {
+            "Another handler was already registered and successfully invoked"
+        } else {
+            "Another handler was already registered: $value"
+        }
+
+        throw IllegalStateException(message)
     }
 }
 
