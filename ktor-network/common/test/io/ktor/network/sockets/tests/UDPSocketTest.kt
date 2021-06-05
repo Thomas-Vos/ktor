@@ -198,8 +198,9 @@ class UDPSocketTest {
                 socketBuilder
                     .bind(NetworkAddress("0.0.0.0", port))
                     .close()
-            } catch (_: Exception /* TODO: BindException */) {
+            } catch (exception: Exception) {
                 // Don't confuse with: Socket Exception: Already bound
+                if (!isJvmBindException(exception)) throw exception
             }
         }
     }
@@ -242,6 +243,8 @@ private fun testUdpSockets(block: suspend CoroutineScope.(SelectorManager) -> Un
         }
     }
 }
+
+expect fun isJvmBindException(exception: Exception): Boolean
 
 private val OS_NAME: String
     get() {
