@@ -22,7 +22,7 @@ class UDPSocketTest {
 
     @Test
     fun testBroadcastFails(): Unit = testUdpSockets { selector ->
-        if (OS_NAME == "win") {
+        if (isJvmWindows()) {
             return@testUdpSockets
         }
 
@@ -246,13 +246,4 @@ private fun testUdpSockets(block: suspend CoroutineScope.(SelectorManager) -> Un
 
 expect fun isJvmBindException(exception: Exception): Boolean
 
-private val OS_NAME: String
-    get() {
-        val os = "unknown" // TODO: System.getProperty("os.name", "unknown").toLowerCase()
-        return when {
-            os.contains("win") -> "win"
-            os.contains("mac") -> "mac"
-            os.contains("nux") -> "unix"
-            else -> "unknown"
-        }
-    }
+expect fun isJvmWindows(): Boolean
