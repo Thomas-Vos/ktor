@@ -31,10 +31,8 @@ internal actual fun UDPSocketBuilder.Companion.connectUDP(
     }
 
     return DatagramSocketImpl(
-        descriptor,
-        selector,
-        _localAddress = localAddress ?: NetworkAddress("0.0.0.0", address.port, address),
-        _remoteAddress = remoteAddress,
+        descriptor = descriptor,
+        selector = selector,
         parent = selector.coroutineContext
     )
 }
@@ -55,10 +53,8 @@ internal actual fun UDPSocketBuilder.Companion.bindUDP(
     }
 
     return DatagramSocketImpl(
-        descriptor,
-        selector,
-        _localAddress = localAddress ?: NetworkAddress("0.0.0.0", address.port, address),
-        _remoteAddress = null,
+        descriptor = descriptor,
+        selector = selector,
         parent = selector.coroutineContext
     )
 }

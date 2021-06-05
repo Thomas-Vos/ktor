@@ -54,8 +54,6 @@ class UDPSocketTest {
         assertTrue(socket.isClosed)
     }
 
-    // TODO: Test is failing with this exception:
-    //  io.ktor.utils.io.errors.PosixException.PosixErrnoException: POSIX error 49: Can't assign requested address (49)
     @Test
     fun testBroadcastSuccessful() = testUdpSockets { selector ->
         val serverSocketCompletable = CompletableDeferred<BoundDatagramSocket>()
@@ -214,6 +212,9 @@ class UDPSocketTest {
                 reusePort = true
             }
             .use { socket ->
+                assertTrue(socket.localAddress.hostname.let { it == "localhost" || it == "127.0.0.1" })
+                assertEquals(8000, socket.localAddress.port)
+
                 // Send messages to localhost
                 launch {
                     val address = NetworkAddress("127.0.0.1", 8000)

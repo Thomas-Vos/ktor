@@ -19,8 +19,6 @@ import kotlin.coroutines.*
 internal class DatagramSocketImpl(
     private val descriptor: Int,
     val selector: SelectorManager,
-    private val _localAddress: NetworkAddress,
-    private val _remoteAddress: NetworkAddress?,
     parent: CoroutineContext = EmptyCoroutineContext
 ) : BoundDatagramSocket, ConnectedDatagramSocket, Socket, CoroutineScope {
     private val _context: CompletableJob = Job(parent[Job])
@@ -32,9 +30,9 @@ internal class DatagramSocketImpl(
         get() = _context
 
     override val localAddress: NetworkAddress
-        get() = _localAddress
+        get() = getLocalAddress(descriptor).let { NetworkAddress(it.address, it.port, it) }
     override val remoteAddress: NetworkAddress
-        get() = _remoteAddress!! // TODO: What should happen here?
+        get() = getRemoteAddress(descriptor).let { NetworkAddress(it.address, it.port, it) }
 
     private val sender: SendChannel<Datagram> = DatagramSendChannel(descriptor, this)
 

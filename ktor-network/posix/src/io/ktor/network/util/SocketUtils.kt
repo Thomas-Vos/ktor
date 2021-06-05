@@ -19,7 +19,12 @@ internal fun getAddressInfo(
     }
 
     val result = alloc<CPointerVar<addrinfo>>()
-    val code = getaddrinfo(hostname, portInfo.toString(), hints, result.ptr)
+    val code = getaddrinfo(
+        hostname,
+        posix_htons(portInfo.convert()).toString(),
+        hints,
+        result.ptr
+    )
     defer { freeaddrinfo(result.value) }
 
     when (code) {
@@ -78,14 +83,18 @@ internal fun addrinfo?.toIpList(): List<SocketAddress> {
 internal fun sockaddr.toSocketAddress(): SocketAddress = when (sa_family.toInt()) {
     AF_INET -> {
         val address = ptr.reinterpret<sockaddr_in>().pointed
-        IPv4Address(address.sin_family, address.sin_addr, address.sin_port.convert())
+        IPv4Address(
+            address.sin_family,
+            address.sin_addr,
+            posix_htons(address.sin_port.convert()).convert()
+        )
     }
     AF_INET6 -> {
         val address = ptr.reinterpret<sockaddr_in6>().pointed
         IPv6Address(
             address.sin6_family,
             address.sin6_addr,
-            address.sin6_port.convert(),
+            posix_htons(address.sin6_port.convert()).convert(),
             address.sin6_flowinfo,
             address.sin6_scope_id
         )
