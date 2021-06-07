@@ -100,7 +100,6 @@ internal class DatagramSendChannel(
 
     override suspend fun send(element: Datagram) {
         lock.withLock {
-            // TODO: use IO dispatcher just like JVM implementation?
             sendImpl(element)
         }
     }

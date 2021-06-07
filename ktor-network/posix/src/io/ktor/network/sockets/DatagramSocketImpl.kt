@@ -36,16 +36,16 @@ internal class DatagramSocketImpl(
 
     private val sender: SendChannel<Datagram> = DatagramSendChannel(descriptor, this)
 
-    private val receiver: ReceiveChannel<Datagram> =
-        produce(coroutineContext) { // TODO: Dispatchers.IO which is used in jvm version of DatagramSocketImpl is unavailable
-            try {
-                while (true) {
-                    val received = receiveImpl()
-                    channel.send(received)
-                }
-            } catch (_: ClosedSendChannelException) {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val receiver: ReceiveChannel<Datagram> = produce {
+        try {
+            while (true) {
+                val received = receiveImpl()
+                channel.send(received)
             }
+        } catch (_: ClosedSendChannelException) {
         }
+    }
 
     override val incoming: ReceiveChannel<Datagram>
         get() = receiver
