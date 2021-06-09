@@ -14,8 +14,6 @@ import kotlinx.atomicfu.*
 import kotlinx.coroutines.*
 import kotlin.test.*
 
-// TODO: some tests are logging the following exception (tests still green). Not sure why this is happening, this was not the case before rebasing.
-//  io.ktor.utils.io.errors.PosixException.BadFileDescriptorException: EBADF (9): Bad file descriptor
 class UDPSocketTest {
 
     private val done = atomic(0)
