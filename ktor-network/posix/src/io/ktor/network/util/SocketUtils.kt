@@ -4,6 +4,8 @@
 
 package io.ktor.network.util
 
+import io.ktor.utils.io.bits.*
+import io.ktor.utils.io.core.*
 import kotlinx.cinterop.*
 import platform.posix.*
 
@@ -21,7 +23,7 @@ internal fun getAddressInfo(
     val result = alloc<CPointerVar<addrinfo>>()
     val code = getaddrinfo(
         hostname,
-        posix_htons(portInfo.convert()).toString(),
+        my_htons(portInfo.convert()).toString(),
         hints,
         result.ptr
     )
@@ -86,7 +88,7 @@ internal fun sockaddr.toSocketAddress(): SocketAddress = when (sa_family.toInt()
         IPv4Address(
             address.sin_family,
             address.sin_addr,
-            posix_htons(address.sin_port.convert()).convert()
+            my_htons(address.sin_port.convert()).convert()
         )
     }
     AF_INET6 -> {
@@ -94,10 +96,15 @@ internal fun sockaddr.toSocketAddress(): SocketAddress = when (sa_family.toInt()
         IPv6Address(
             address.sin6_family,
             address.sin6_addr,
-            posix_htons(address.sin6_port.convert()).convert(),
+            my_htons(address.sin6_port.convert()).convert(),
             address.sin6_flowinfo,
             address.sin6_scope_id
         )
     }
     else -> error("Unknown address family $sa_family")
+}
+
+internal fun my_htons(value: UShort): uint16_t = when {
+    ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN -> value
+    else -> value.toShort().reverseByteOrder().toUShort()
 }
