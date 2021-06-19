@@ -183,8 +183,8 @@ class UDPSocketTest {
     }
 
     @Test
-    fun testBind() {
-        val socketBuilder: UDPSocketBuilder = aSocket(SelectorManager()).udp()
+    fun testBind() = testUdpSockets { selector ->
+        val socketBuilder: UDPSocketBuilder = aSocket(selector).udp()
         val socket = socketBuilder.bind()
         val port = socket.localAddress.port
         socket.close()
