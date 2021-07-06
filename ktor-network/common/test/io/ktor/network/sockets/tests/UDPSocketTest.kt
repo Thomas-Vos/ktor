@@ -207,7 +207,6 @@ class UDPSocketTest {
             .udp()
             .bind(NetworkAddress("127.0.0.1", 8000)) {
                 reuseAddress = true
-                reusePort = true
             }
             .use { socket ->
                 assertTrue(socket.localAddress.hostname.let { it == "localhost" || it == "127.0.0.1" })
