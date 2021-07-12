@@ -209,7 +209,6 @@ class UDPSocketTest {
                 reuseAddress = true
             }
             .use { socket ->
-                assertTrue(socket.localAddress.hostname.let { it == "localhost" || it == "127.0.0.1" })
                 assertEquals(8000, socket.localAddress.port)
 
                 // Send messages to localhost
