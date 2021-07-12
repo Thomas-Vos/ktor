@@ -4,13 +4,6 @@
 
 package io.ktor.network.sockets.tests
 
-import java.net.*
-
-actual fun isJvmBindException(exception: Exception): Boolean {
-    // Don't confuse with: Socket Exception: Already bound
-    return exception is BindException
-}
-
 actual fun isJvmWindows(): Boolean {
     val os = System.getProperty("os.name", "unknown").toLowerCase()
     return os.contains("win")

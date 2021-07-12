@@ -183,25 +183,6 @@ class UDPSocketTest {
     }
 
     @Test
-    fun testBind() = testUdpSockets { selector ->
-        val socketBuilder: UDPSocketBuilder = aSocket(selector).udp()
-        val socket = socketBuilder.bind()
-        val port = socket.localAddress.port
-        socket.close()
-
-        repeat(1024) {
-            try {
-                socketBuilder
-                    .bind(NetworkAddress("0.0.0.0", port))
-                    .close()
-            } catch (exception: Exception) {
-                // Don't confuse with: Socket Exception: Already bound
-                if (!isJvmBindException(exception)) throw exception
-            }
-        }
-    }
-
-    @Test
     fun testSendReceive(): Unit = testUdpSockets { selector ->
         aSocket(selector)
             .udp()
@@ -240,7 +221,5 @@ private fun testUdpSockets(block: suspend CoroutineScope.(SelectorManager) -> Un
         }
     }
 }
-
-expect fun isJvmBindException(exception: Exception): Boolean
 
 expect fun isJvmWindows(): Boolean

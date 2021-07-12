@@ -4,10 +4,6 @@
 
 package io.ktor.network.sockets.tests
 
-actual fun isJvmBindException(exception: Exception): Boolean {
-    return false
-}
-
 actual fun isJvmWindows(): Boolean {
     return false
 }
