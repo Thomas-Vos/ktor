@@ -60,10 +60,10 @@ internal class DatagramSocketImpl(
     override fun close() {
         receiver.cancel()
         _context.complete()
-        selector.notifyClosed(selectable)
         _context.invokeOnCompletion {
             shutdown(descriptor, SHUT_RDWR)
             // Descriptor is closed by the selector manager
+            selector.notifyClosed(selectable)
         }
         sender.close()
     }

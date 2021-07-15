@@ -38,10 +38,10 @@ internal class TCPSocketNative(
 
     override fun close() {
         _context.complete()
-        selector.notifyClosed(selectable)
         _context.invokeOnCompletion {
             shutdown(descriptor, SHUT_RDWR)
             // Descriptor is closed by the selector manager
+            selector.notifyClosed(selectable)
         }
     }
 }
