@@ -4,6 +4,7 @@
 
 package io.ktor.network.selector
 
+import io.ktor.network.sockets.*
 import io.ktor.network.util.*
 import io.ktor.utils.io.*
 import io.ktor.utils.io.core.*
@@ -25,15 +26,28 @@ internal class SignalPoint : Closeable {
         get() = readDescriptor
 
     init {
+        initSocketsIfNeeded()
+
         val (read, write) = memScoped {
-            val pipeDescriptors = allocArray<IntVar>(2)
-            pipe(pipeDescriptors).check()
-
-            repeat(2) { index ->
-                makeNonBlocking(pipeDescriptors[index])
+            val fd1 = ktor_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP).check()
+            setSocketFlag(fd1, SO_REUSEADDR, true).check()
+            var address = InetSocketAddress("127.0.0.1", 0).resolve().single()
+            address.nativeAddress { pointer, size ->
+                ktor_bind(fd1, pointer, size).check()
             }
+            ktor_listen(fd1, 1).check()
+            address = getLocalAddress(fd1)
+            val fd2 = ktor_socket(AF_INET, SOCK_STREAM, 0).check()
+            address.nativeAddress { pointer, size ->
+                ktor_connect(fd2, pointer, size).check()
+            }
+            val fd3 = ktor_accept(fd1, null, null).check()
+            closesocket(fd1.convert())
 
-            Pair(pipeDescriptors[0], pipeDescriptors[1])
+            nonBlocking(fd2).check()
+            nonBlocking(fd3).check()
+
+            Pair(fd2, fd3)
         }
 
         readDescriptor = read
@@ -61,7 +75,7 @@ internal class SignalPoint : Closeable {
                 array[0] = 7
                 // note: here we ignore the result of write intentionally
                 // we simply don't care whether the buffer is full or the pipe is already closed
-                val result = write(writeDescriptor, array, 1.convert())
+                val result = ktor_send(writeDescriptor, array, 1.convert(), 0)
                 if (result < 0) return
 
                 remaining += result.toInt()
@@ -88,11 +102,10 @@ internal class SignalPoint : Closeable {
             val buffer = allocArray<ByteVar>(1024)
 
             do {
-                val result = read(readDescriptor, buffer, 1024.convert()).convert<Int>()
+                val result = ktor_recv(readDescriptor, buffer, 1024.convert(), 0).convert<Int>()
                 if (result < 0) {
-                    when (val error = PosixException.forSocketError()) {
-                        is PosixException.TryAgainException -> {}
-                        else -> throw error
+                    if (getSocketError() != WSAEWOULDBLOCK) {
+                        throw PosixException.forSocketError()
                     }
 
                     break
@@ -107,9 +120,5 @@ internal class SignalPoint : Closeable {
         }
 
         return count
-    }
-
-    private fun makeNonBlocking(descriptor: Int) {
-        fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL) or O_NONBLOCK).check()
     }
 }
