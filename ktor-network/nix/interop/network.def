@@ -1,11 +1,7 @@
 package=io.ktor.network.interop
 ---
-#ifdef _WIN32
-#include <winsock2.h>
-#else
 #include <sys/select.h>
 #include <arpa/inet.h>
-#endif
 #include <stdlib.h>
 
 typedef struct selection_set {
@@ -35,12 +31,6 @@ void selector_release_fd_set(selection_set set) {
     free(set.value);
 }
 
-#ifdef _WIN32
-int selector_select(int descriptor, selection_set read_set, selection_set write_set, selection_set error_set) {
-    return select(descriptor, read_set.value, write_set.value, error_set.value, NULL);
-}
-#else
 int selector_pselect(int descriptor, selection_set read_set, selection_set write_set, selection_set error_set) {
     return pselect(descriptor, read_set.value, write_set.value, error_set.value, NULL, NULL);
 }
-#endif

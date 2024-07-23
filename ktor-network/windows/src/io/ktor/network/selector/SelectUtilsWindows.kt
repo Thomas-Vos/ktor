@@ -4,32 +4,19 @@
 
 package io.ktor.network.selector
 
-import io.ktor.network.interop.*
 import io.ktor.network.util.*
 import io.ktor.util.collections.*
 import io.ktor.utils.io.*
-import io.ktor.utils.io.errors.*
 import kotlinx.cinterop.*
 import kotlinx.coroutines.*
-import kotlinx.io.IOException
 import platform.posix.*
-import platform.windows.*
-import kotlin.coroutines.*
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.math.*
 
-@OptIn(InternalAPI::class)
+@OptIn(InternalAPI::class, ExperimentalForeignApi::class)
 internal actual class SelectorHelper {
     private val wakeupSignal = SignalPoint()
     private val interestQueue = LockFreeMPSCQueue<EventInfo>()
     private val closeQueue = LockFreeMPSCQueue<Int>()
-
-    private val wakeupSignalEvent = EventInfo(
-        wakeupSignal.selectionDescriptor,
-        SelectInterest.READ,
-        Continuation(EmptyCoroutineContext) {
-        }
-    )
 
     actual fun interest(event: EventInfo): Boolean {
         if (interestQueue.addLast(event)) {
@@ -64,86 +51,63 @@ internal actual class SelectorHelper {
 
     @OptIn(ExperimentalForeignApi::class, InternalAPI::class)
     private fun selectionLoop() {
-        val readSet = select_create_fd_set()
-        val writeSet = select_create_fd_set()
-        val errorSet = select_create_fd_set()
+        val completed = mutableSetOf<EventInfo>()
+        val watchSet = mutableSetOf<EventInfo>()
+        val closeSet = mutableSetOf<Int>()
+        val allWsaEvents = mutableMapOf<Int, COpaquePointer?>()
 
-        try {
-            val completed = mutableSetOf<EventInfo>()
-            val watchSet = mutableSetOf<EventInfo>()
-            val closeSet = mutableSetOf<Int>()
-
-            while (!interestQueue.isClosed) {
-                watchSet.add(wakeupSignalEvent)
-                var maxDescriptor = fillHandlers(watchSet, readSet, writeSet, errorSet)
-                if (maxDescriptor == 0) continue
-
-                maxDescriptor = max(maxDescriptor + 1, wakeupSignalEvent.descriptor + 1)
-
-                try {
-                    selector_select(maxDescriptor + 1, readSet, writeSet, errorSet).check()
-                } catch (_: PosixException.BadFileDescriptorException) {
-                    // Thrown if the descriptor was closed.
+        while (!interestQueue.isClosed) {
+            val wsaEvents = fillHandlers(watchSet, allWsaEvents)
+            val index = memScoped {
+                val length = wsaEvents.size + 1
+                val wsaEventsWithWake = allocArray<CPointerVarOf<COpaquePointer>>(length).apply {
+                    wsaEvents.forEachIndexed { index, wsaEvent ->
+                        this[index] = wsaEvent
+                    }
+                    this[length - 1] = wakeupSignal.event
                 }
-
-                processSelectedEvents(watchSet, closeSet, completed, readSet, writeSet, errorSet)
+                WSAWaitForMultipleEvents(
+                    cEvents = length.convert(),
+                    lphEvents = wsaEventsWithWake,
+                    fWaitAll = 0,
+                    dwTimeout = UInt.MAX_VALUE,
+                    fAlertable = 0
+                ).toInt().check()
             }
 
-            val exception = CancellationException("Selector closed")
-            while (!interestQueue.isEmpty) {
-                interestQueue.removeFirstOrNull()?.fail(exception)
-            }
+            processSelectedEvents(watchSet, closeSet, completed, allWsaEvents, index, wsaEvents)
+        }
 
-            for (item in watchSet) {
-                item.fail(exception)
-            }
-        } finally {
-            selector_release_fd_set(readSet)
-            selector_release_fd_set(writeSet)
-            selector_release_fd_set(errorSet)
+        val exception = CancellationException("Selector closed")
+        while (!interestQueue.isEmpty) {
+            interestQueue.removeFirstOrNull()?.fail(exception)
+        }
+
+        for (item in watchSet) {
+            item.fail(exception)
         }
     }
 
     @OptIn(ExperimentalForeignApi::class)
     private fun fillHandlers(
         watchSet: MutableSet<EventInfo>,
-        readSet: CValue<selection_set>,
-        writeSet: CValue<selection_set>,
-        errorSet: CValue<selection_set>
-    ): Int {
-        var maxDescriptor = 0
-
-        select_fd_clear(readSet)
-        select_fd_clear(writeSet)
-        select_fd_clear(errorSet)
-
+        allWsaEvents: MutableMap<Int, COpaquePointer?>
+    ): List<COpaquePointer?> {
         while (true) {
             val event = interestQueue.removeFirstOrNull() ?: break
             watchSet.add(event)
         }
-
-        for (event in watchSet) {
-            addInterest(event, readSet, writeSet, errorSet)
-            maxDescriptor = max(maxDescriptor, event.descriptor)
+        return watchSet.map { event ->
+            allWsaEvents.getOrPut(event.descriptor) {
+                val wsaEvent = WSACreateEvent()
+                WSAEventSelect(
+                    s = event.descriptor.convert(),
+                    hEventObject = wsaEvent,
+                    lNetworkEvents = allInterestKinds
+                )
+                wsaEvent
+            }
         }
-
-        return maxDescriptor
-    }
-
-    @OptIn(ExperimentalForeignApi::class)
-    private fun addInterest(
-        event: EventInfo,
-        readSet: CValue<selection_set>,
-        writeSet: CValue<selection_set>,
-        errorSet: CValue<selection_set>
-    ) {
-        val set = descriptorSetByInterestKind(event, readSet, writeSet)
-
-        select_fd_add(event.descriptor, set)
-        select_fd_add(event.descriptor, errorSet)
-
-        check(select_fd_isset(event.descriptor, set) != 0)
-        check(select_fd_isset(event.descriptor, errorSet) != 0)
     }
 
     @OptIn(ExperimentalForeignApi::class)
@@ -151,42 +115,46 @@ internal actual class SelectorHelper {
         watchSet: MutableSet<EventInfo>,
         closeSet: MutableSet<Int>,
         completed: MutableSet<EventInfo>,
-        readSet: CValue<selection_set>,
-        writeSet: CValue<selection_set>,
-        errorSet: CValue<selection_set>
+        allWsaEvents: MutableMap<Int, COpaquePointer?>,
+        wsaIndex: Int,
+        wsaEvents: List<COpaquePointer?>
     ) {
         while (true) {
             val event = closeQueue.removeFirstOrNull() ?: break
             closeSet.add(event)
         }
 
-        for (event in watchSet) {
+        watchSet.forEachIndexed { index, event ->
             if (event.descriptor in closeSet) {
                 completed.add(event)
-                continue
+                return@forEachIndexed
+            }
+            val wsaEvent = wsaEvents[index]
+            val networkEvents = memScoped {
+                val networkEvents = alloc<WSANETWORKEVENTS>()
+                WSAEnumNetworkEvents(event.descriptor.convert(), wsaEvent, networkEvents.ptr).check()
+                networkEvents.lNetworkEvents
             }
 
-            val set = descriptorSetByInterestKind(event, readSet, writeSet)
+            val set = descriptorSetByInterestKind(event)
 
-            if (select_fd_isset(event.descriptor, errorSet) != 0) {
-                completed.add(event)
-                event.fail(IOException("Fail to select descriptor ${event.descriptor} for ${event.interest}"))
-                continue
-            }
-
-            if (select_fd_isset(event.descriptor, set) == 0) continue
-
-            if (event.descriptor == wakeupSignal.selectionDescriptor) {
-                wakeupSignal.check()
-                continue
+            if (networkEvents and set == 0) {
+                return@forEachIndexed
             }
 
             completed.add(event)
             event.complete()
         }
 
+        if (wsaIndex == wsaEvents.lastIndex + 1) {
+            wakeupSignal.check()
+        }
+
         for (descriptor in closeSet) {
             close(descriptor)
+            allWsaEvents.remove(descriptor)?.let { wsaEvent ->
+                WSACloseEvent(wsaEvent)
+            }
         }
         closeSet.clear()
 
@@ -194,15 +162,16 @@ internal actual class SelectorHelper {
         completed.clear()
     }
 
-    @OptIn(ExperimentalForeignApi::class)
     private fun descriptorSetByInterestKind(
-        event: EventInfo,
-        readSet: CValue<selection_set>,
-        writeSet: CValue<selection_set>
-    ): CValue<selection_set> = when (event.interest) {
-        SelectInterest.READ -> readSet
-        SelectInterest.WRITE -> writeSet
-        SelectInterest.ACCEPT -> readSet
-        SelectInterest.CONNECT -> writeSet
+        event: EventInfo
+    ): Int = when (event.interest) {
+        SelectInterest.READ -> FD_READ
+        SelectInterest.WRITE -> FD_WRITE
+        SelectInterest.ACCEPT -> FD_ACCEPT
+        SelectInterest.CONNECT -> FD_CONNECT
+    }
+
+    private companion object {
+        private val allInterestKinds: Int = FD_READ or FD_WRITE or FD_ACCEPT or FD_CONNECT
     }
 }
