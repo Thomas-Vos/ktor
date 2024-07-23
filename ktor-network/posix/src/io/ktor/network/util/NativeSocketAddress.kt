@@ -26,9 +26,17 @@ internal abstract class NativeInetSocketAddress(
     internal abstract val ipString: String
 }
 
-internal expect class NativeIPv4SocketAddress : NativeInetSocketAddress
+internal expect class NativeIPv4SocketAddress : NativeInetSocketAddress {
+    @OptIn(ExperimentalForeignApi::class)
+    override fun nativeAddress(block: (address: CPointer<sockaddr>, size: UInt) -> Unit)
+    override val ipString: String
+}
 
-internal expect class NativeIPv6SocketAddress : NativeInetSocketAddress
+internal expect class NativeIPv6SocketAddress : NativeInetSocketAddress {
+    @OptIn(ExperimentalForeignApi::class)
+    override fun nativeAddress(block: (address: CPointer<sockaddr>, size: UInt) -> Unit)
+    override val ipString: String
+}
 
 /**
  * Represents an UNIX socket address.

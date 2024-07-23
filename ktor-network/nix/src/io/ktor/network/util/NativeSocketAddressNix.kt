@@ -18,7 +18,7 @@ internal actual class NativeIPv4SocketAddress(
     override fun toString(): String = "NativeIPv4SocketAddress[$ipString:$port]"
 
     @OptIn(ExperimentalForeignApi::class)
-    override fun nativeAddress(block: (address: CPointer<sockaddr>, size: UInt) -> Unit) {
+    actual override fun nativeAddress(block: (address: CPointer<sockaddr>, size: UInt) -> Unit) {
         cValue<sockaddr_in> {
             sin_addr.s_addr = address
             sin_port = hostToNetworkOrder(port.toUShort())
@@ -29,7 +29,7 @@ internal actual class NativeIPv4SocketAddress(
     }
 
     @OptIn(ExperimentalForeignApi::class)
-    override val ipString: String
+    actual override val ipString: String
         get() = memScoped {
             val string = allocArray<ByteVar>(INET_ADDRSTRLEN)
             val value = cValue<in_addr> {
@@ -57,7 +57,7 @@ internal actual class NativeIPv6SocketAddress(
     override fun toString(): String = "NativeIPv6SocketAddress[$ipString:$port]"
 
     @OptIn(ExperimentalForeignApi::class)
-    override fun nativeAddress(block: (address: CPointer<sockaddr>, size: UInt) -> Unit) {
+    actual override fun nativeAddress(block: (address: CPointer<sockaddr>, size: UInt) -> Unit) {
         cValue<sockaddr_in6> {
             sin6_family = family.convert()
             sin6_flowinfo = flowInfo
@@ -69,7 +69,7 @@ internal actual class NativeIPv6SocketAddress(
     }
 
     @OptIn(ExperimentalForeignApi::class)
-    override val ipString: String
+    actual override val ipString: String
         get() = memScoped {
             val string = allocArray<ByteVar>(INET6_ADDRSTRLEN)
             ktor_inet_ntop(
