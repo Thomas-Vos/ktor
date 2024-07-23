@@ -4,7 +4,6 @@
 
 package io.ktor.utils.io.errors
 
-import io.ktor.utils.io.*
 import kotlinx.cinterop.*
 import kotlinx.io.*
 import platform.posix.*

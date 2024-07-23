@@ -22,7 +22,7 @@ internal actual class NativeIPv4SocketAddress(
         cValue<sockaddr_in> {
             sin_addr.s_addr = address
             sin_port = hostToNetworkOrder(port.toUShort())
-            sin_family = family
+            sin_family = family.convert()
 
             block(ptr.reinterpret(), sizeOf<sockaddr_in>().convert())
         }
@@ -59,7 +59,7 @@ internal actual class NativeIPv6SocketAddress(
     @OptIn(ExperimentalForeignApi::class)
     override fun nativeAddress(block: (address: CPointer<sockaddr>, size: UInt) -> Unit) {
         cValue<sockaddr_in6> {
-            sin6_family = family
+            sin6_family = family.convert()
             sin6_flowinfo = flowInfo
             sin6_port = hostToNetworkOrder(port.toUShort())
             sin6_scope_id = scopeId

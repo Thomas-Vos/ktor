@@ -46,13 +46,17 @@ private fun addrinfo?.toIpList(): List<NativeSocketAddress> {
 internal actual fun sockaddr.toNativeSocketAddress(): NativeSocketAddress = when (sa_family.toInt()) {
     AF_INET -> {
         val address = ptr.reinterpret<sockaddr_in>().pointed
-        NativeIPv4SocketAddress(address.sin_family, address.sin_addr, networkToHostOrder(address.sin_port).toInt())
+        NativeIPv4SocketAddress(
+            address.sin_family.convert(),
+            address.sin_addr,
+            networkToHostOrder(address.sin_port).toInt()
+        )
     }
 
     AF_INET6 -> {
         val address = ptr.reinterpret<sockaddr_in6>().pointed
         NativeIPv6SocketAddress(
-            address.sin6_family,
+            address.sin6_family.convert(),
             address.sin6_addr,
             networkToHostOrder(address.sin6_port).toInt(),
             address.sin6_flowinfo,
