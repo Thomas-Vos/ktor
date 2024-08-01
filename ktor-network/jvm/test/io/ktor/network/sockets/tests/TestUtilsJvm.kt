@@ -10,6 +10,7 @@ import kotlin.io.path.*
 private const val UNIX_DOMAIN_SOCKET_ADDRESS_CLASS = "java.net.UnixDomainSocketAddress"
 
 internal actual fun Any.supportsUnixDomainSockets(): Boolean {
+    if (isJvmWindows()) return false
     return try {
         Class.forName(UNIX_DOMAIN_SOCKET_ADDRESS_CLASS, false, javaClass.classLoader)
         true
