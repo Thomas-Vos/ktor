@@ -91,11 +91,6 @@ internal actual fun nonBlocking(descriptor: Int): Int {
     return fcntl(descriptor, F_SETFL, O_NONBLOCK)
 }
 
-@OptIn(ExperimentalForeignApi::class)
-internal actual fun signalIgnoreSigpipe() {
-    signal(SIGPIPE, SIG_IGN)
-}
-
 @OptIn(UnsafeNumber::class, ExperimentalForeignApi::class)
 internal actual fun ktor_send(socket: Int, buf: CValuesRef<ByteVar>?, len: Int, flags: Int): Int {
     return send(socket, buf, len.convert(), flags).convert()

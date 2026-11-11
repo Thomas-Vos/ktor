@@ -293,6 +293,36 @@ class TCPSocketTest {
     }
 
     @Test
+    fun testWriteToClosedConnectionFails() = testSockets { selector ->
+        val tcp = aSocket(selector).tcp()
+        val server: ServerSocket = tcp.bind("127.0.0.1", port = 0)
+
+        try {
+            val serverConnectionPromise = async {
+                server.accept()
+            }
+
+            val clientConnection = tcp.connect("127.0.0.1", port = server.port)
+            serverConnectionPromise.await().close()
+            try {
+                val output = clientConnection.openWriteChannel(autoFlush = true)
+                // The first writes after the peer closed the connection can still succeed. A later one must fail
+                // with an exception instead of SIGPIPE killing the process on Kotlin/Native.
+                assertFails {
+                    repeat(100) {
+                        output.writeStringUtf8("ping\n")
+                        delay(50)
+                    }
+                }
+            } finally {
+                clientConnection.close()
+            }
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
     fun testAutoFlush() = testSockets { selector ->
         val tcp = aSocket(selector).tcp()
         val server: ServerSocket = tcp.bind("127.0.0.1", port = 0)

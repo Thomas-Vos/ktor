@@ -9,6 +9,7 @@ import kotlinx.cinterop.*
 import platform.posix.*
 
 internal fun assignOptions(descriptor: Int, options: SocketOptions) {
+    disableSigpipe(descriptor)
     setSocketFlag(descriptor, SO_REUSEADDR, options.reuseAddress)
     reusePortFlag?.let { setSocketFlag(descriptor, it, options.reusePort) }
     if (options is SocketOptions.UDPSocketOptions) {
@@ -23,6 +24,18 @@ internal fun assignOptions(descriptor: Int, options: SocketOptions) {
             setSocketOption(descriptor, SO_SNDBUF, it)
         }
     }
+}
+
+/**
+ * Makes writes to [descriptor] fail with `EPIPE` instead of raising `SIGPIPE` when the connection is broken,
+ * for example after the peer closed it or after iOS reclaimed the socket of a suspended app.
+ * The default action of `SIGPIPE` terminates the process.
+ *
+ * Darwin uses the `SO_NOSIGPIPE` socket option ([noSigpipeOption]). Linux and Android have no such option,
+ * so every `send`/`sendto` passes `MSG_NOSIGNAL` ([noSigpipeSendFlag]) instead.
+ */
+internal fun disableSigpipe(descriptor: Int) {
+    noSigpipeOption?.let { setSocketFlag(descriptor, it, true) }
 }
 
 private fun setSocketFlag(

@@ -113,7 +113,7 @@ internal class DatagramSendChannel(
                         descriptor,
                         pinned.addressOf(offset),
                         length.convert(),
-                        0,
+                        noSigpipeSendFlag,
                         address,
                         addressSize
                     )
@@ -123,7 +123,7 @@ internal class DatagramSendChannel(
                     descriptor,
                     pinned.addressOf(offset),
                     length.convert(),
-                    0,
+                    noSigpipeSendFlag,
                     null,
                     0.convert()
                 )

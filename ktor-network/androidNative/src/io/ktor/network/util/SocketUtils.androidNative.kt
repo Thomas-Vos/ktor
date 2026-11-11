@@ -10,6 +10,9 @@ import io.ktor.network.interop.*
 import kotlinx.cinterop.*
 import platform.posix.*
 
+internal actual val noSigpipeOption: Int? = null
+internal actual val noSigpipeSendFlag: Int = MSG_NOSIGNAL
+
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun ktor_inet_ntop(
     family: Int,

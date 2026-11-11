@@ -11,6 +11,9 @@ import platform.linux.inet_ntop
 import platform.linux.sockaddr_un
 import platform.posix.*
 
+internal actual val noSigpipeOption: Int? = null
+internal actual val noSigpipeSendFlag: Int = MSG_NOSIGNAL
+
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun ktor_inet_ntop(
     family: Int,

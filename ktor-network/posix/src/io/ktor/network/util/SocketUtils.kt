@@ -74,6 +74,18 @@ internal expect fun pack_sockaddr_un(
 
 internal expect val reusePortFlag: Int?
 
+/**
+ * The socket option that makes writes to a broken connection fail with `EPIPE` instead of raising `SIGPIPE`,
+ * or `null` if the platform has no such option. See [disableSigpipe].
+ */
+internal expect val noSigpipeOption: Int?
+
+/**
+ * The `send`/`sendto` flag that makes a write to a broken connection fail with `EPIPE` instead of raising `SIGPIPE`,
+ * or `0` if the platform has no such flag. See [disableSigpipe].
+ */
+internal expect val noSigpipeSendFlag: Int
+
 internal expect object ShutdownCommands {
     val Receive: Int
     val Send: Int
@@ -83,8 +95,6 @@ internal expect object ShutdownCommands {
 internal expect fun ktor_shutdown(fd: Int, how: Int): Int
 
 internal expect fun nonBlocking(descriptor: Int): Int
-
-internal expect fun signalIgnoreSigpipe()
 
 @OptIn(ExperimentalForeignApi::class)
 internal expect fun ktor_send(socket: Int, buf: CValuesRef<ByteVar>?, len: Int, flags: Int): Int

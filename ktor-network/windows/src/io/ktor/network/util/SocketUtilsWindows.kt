@@ -176,9 +176,9 @@ internal actual fun nonBlocking(descriptor: Int): Int {
     }
 }
 
-internal actual fun signalIgnoreSigpipe() {
-    // Unsupported on Windows
-}
+// Unsupported on Windows (no SIGPIPE)
+internal actual val noSigpipeOption: Int? = null
+internal actual val noSigpipeSendFlag: Int = 0
 
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun ktor_send(socket: Int, buf: CValuesRef<ByteVar>?, len: Int, flags: Int): Int {

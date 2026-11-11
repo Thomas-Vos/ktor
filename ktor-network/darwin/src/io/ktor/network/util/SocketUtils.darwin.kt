@@ -11,6 +11,9 @@ import kotlinx.cinterop.ByteVar
 import platform.darwin.*
 import platform.posix.*
 
+internal actual val noSigpipeOption: Int? = SO_NOSIGPIPE
+internal actual val noSigpipeSendFlag: Int = 0
+
 @OptIn(ExperimentalForeignApi::class)
 internal actual fun ktor_inet_ntop(
     family: Int,
